@@ -59,3 +59,11 @@ const hostMetrics = new HostMetrics({
   name: `${serviceName}-host-metrics`,
 });
 hostMetrics.start();
+
+// 2. Graceful Shutdown (Critical for Railway restarts)
+process.on('SIGTERM', () => {
+  otelSDK.shutdown()
+    .then(() => console.log('[OTEL] SDK shut down successfully'))
+    .catch((error) => console.log('[OTEL] Error shutting down SDK', error))
+    .finally(() => process.exit(0));
+});
