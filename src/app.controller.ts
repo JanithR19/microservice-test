@@ -14,4 +14,20 @@ export class AppController {
       timestamp: new Date().toISOString()
     };
   }
+
+  @Get('health/live')
+  healthLive() {
+    return { status: 'alive' };
+  }
+
+  @Get('health/slow')
+  async healthSlow() {
+    await new Promise(resolve => setTimeout(resolve, 2000));
+    return { status: 'slow', delay: '2s' };
+  }
+
+  @Get('health/error')
+  healthError() {
+    throw new Error('Test error for observability!');
+  }
 }

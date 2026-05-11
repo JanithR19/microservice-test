@@ -1,5 +1,4 @@
-import tracing from './tracing';
-tracing.start();
+import './instrument';
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
 
