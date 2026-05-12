@@ -10,41 +10,55 @@ import { ATTR_SERVICE_NAME, ATTR_SERVICE_VERSION } from '@opentelemetry/semantic
 import { PinoInstrumentation } from '@opentelemetry/instrumentation-pino';
 import { metrics } from '@opentelemetry/api';
 import { HostMetrics } from '@opentelemetry/host-metrics';
-import * as dotenv from "dotenv";
+import * as dotenv from 'dotenv';
 
 dotenv.config();
 
-const otlpEndpoint = process.env.OTEL_EXPORTER_OTLP_ENDPOINT || 'http://localhost:4318';
-const serviceName = process.env.APP_NAME || 'microservice-test';
+const DEFAULT_OTLP_ENDPOINT = 'http://localhost:4318';
 
-// 1. Initialize OpenTelemetry SDK
+function buildOtlpUrl(specific?: string, base?: string, suffix = ''): string {
+  // Use specific endpoint if provided
+  if (specific && specific.length > 0) return specific;
+  const b = (base && base.length > 0) ? base : DEFAULT_OTLP_ENDPOINT;
+  // Normalize signal-specific OTLP endpoint if base already has /v1/<signal>
+  if (/\/v1\/(traces|metrics|logs)\/?$/.test(b)) {
+    return b.replace(/\/v1\/(traces|metrics|logs)\/?$/, suffix);
+  }
+  // If base already ends with requested suffix, return as-is
+  if (b.endsWith(suffix)) return b;
+  return b.replace(/\/$/, '') + suffix;
+}
+
+const serviceName = process.env.OTEL_SERVICE_NAME || process.env.APP_NAME || 'microservice-test';
+const otlpBase = process.env.OTEL_EXPORTER_OTLP_ENDPOINT || process.env.OTEL_EXPORTER_OTLP || DEFAULT_OTLP_ENDPOINT;
+
+const tracesUrl = buildOtlpUrl(process.env.OTEL_EXPORTER_OTLP_TRACES_ENDPOINT, otlpBase, '/v1/traces');
+const metricsUrl = buildOtlpUrl(process.env.OTEL_EXPORTER_OTLP_METRICS_ENDPOINT, otlpBase, '/v1/metrics');
+const logsUrl = buildOtlpUrl(process.env.OTEL_EXPORTER_OTLP_LOGS_ENDPOINT, otlpBase, '/v1/logs');
+
+// 1. Initialize OpenTelemetry SDK (vendor-neutral OTLP/HTTP exporters)
 export const otelSDK = new NodeSDK({
   resource: resourceFromAttributes({
     [ATTR_SERVICE_NAME]: serviceName,
-    [ATTR_SERVICE_VERSION]: '1.0.0',
+    [ATTR_SERVICE_VERSION]: process.env.APP_VERSION || '1.0.0',
   }),
-  // Traces to Alloy/Grafana
-  traceExporter: new OTLPTraceExporter({
-    url: `${otlpEndpoint}/v1/traces`,
-  }),
-  // Metrics to Alloy/Grafana
+  traceExporter: new OTLPTraceExporter({ url: tracesUrl }),
   metricReader: new PeriodicExportingMetricReader({
-    exporter: new OTLPMetricExporter({
-      url: `${otlpEndpoint}/v1/metrics`,
-    }),
+    exporter: new OTLPMetricExporter({ url: metricsUrl }),
   }),
-  // Logs to Alloy/Grafana
   logRecordProcessor: new BatchLogRecordProcessor(
-    new OTLPLogExporter({
-      url: `${otlpEndpoint}/v1/logs`,
-    }),
+    new OTLPLogExporter({ url: logsUrl }),
   ),
   instrumentations: [
     getNodeAutoInstrumentations(),
     new PinoInstrumentation({
       logHook: (span, record) => {
-        record['trace_id'] = span.spanContext().traceId;
-        record['span_id'] = span.spanContext().spanId;
+        try {
+          record['trace_id'] = span.spanContext().traceId;
+          record['span_id'] = span.spanContext().spanId;
+        } catch {
+          // noop if span is not available
+        }
       },
     }),
   ],
@@ -61,9 +75,12 @@ const hostMetrics = new HostMetrics({
 hostMetrics.start();
 
 // 2. Graceful Shutdown (Critical for Railway restarts)
-process.on('SIGTERM', () => {
+const shutdown = () => {
   otelSDK.shutdown()
     .then(() => console.log('[OTEL] SDK shut down successfully'))
     .catch((error) => console.log('[OTEL] Error shutting down SDK', error))
     .finally(() => process.exit(0));
-});
+};
+
+process.on('SIGTERM', shutdown);
+process.on('SIGINT', shutdown);
