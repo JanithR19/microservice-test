@@ -5,7 +5,7 @@ import { OTLPLogExporter } from '@opentelemetry/exporter-logs-otlp-http';
 import { OTLPMetricExporter } from '@opentelemetry/exporter-metrics-otlp-http';
 import { BatchLogRecordProcessor } from '@opentelemetry/sdk-logs';
 import { PeriodicExportingMetricReader } from '@opentelemetry/sdk-metrics';
-import { resourceFromAttributes } from '@opentelemetry/resources';
+import { resourceFromAttributes, defaultResource } from '@opentelemetry/resources';
 import { ATTR_SERVICE_NAME, ATTR_SERVICE_VERSION } from '@opentelemetry/semantic-conventions';
 import { PinoInstrumentation } from '@opentelemetry/instrumentation-pino';
 import { metrics } from '@opentelemetry/api';
@@ -19,10 +19,13 @@ const serviceName = process.env.APP_NAME || 'microservice-test';
 
 // 1. Initialize OpenTelemetry SDK
 export const otelSDK = new NodeSDK({
-  resource: resourceFromAttributes({
-    [ATTR_SERVICE_NAME]: serviceName,
-    [ATTR_SERVICE_VERSION]: '1.0.0',
-  }),
+  autoDetectResources: false, // Prevents the SDK from generating 'unknown_service'
+  resource: defaultResource().merge(
+    resourceFromAttributes({
+      [ATTR_SERVICE_NAME]: serviceName,
+      [ATTR_SERVICE_VERSION]: '1.0.0',
+    }),
+  ),
   // Traces to Alloy/Grafana
   traceExporter: new OTLPTraceExporter({
     url: `${otlpEndpoint}/v1/traces`,
