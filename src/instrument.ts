@@ -14,10 +14,14 @@ import * as dotenv from "dotenv";
 
 dotenv.config();
 
-const otlpEndpoint = process.env.OTEL_EXPORTER_OTLP_ENDPOINT || 'http://localhost:4318';
+// Standard OTel Environment Variables
 const serviceName = process.env.APP_NAME || 'microservice-test';
+process.env.OTEL_SERVICE_NAME = serviceName; 
+process.env.OTEL_RESOURCE_ATTRIBUTES = `service.name=${serviceName},service.version=1.0.0`;
 
-// 1. Initialize OpenTelemetry SDK
+const otlpEndpoint = process.env.OTEL_EXPORTER_OTLP_ENDPOINT || 'http://localhost:4318';
+
+// Initialize OpenTelemetry SDK
 export const otelSDK = new NodeSDK({
   resource: resourceFromAttributes({
     [ATTR_SERVICE_NAME]: serviceName,
@@ -53,14 +57,14 @@ export const otelSDK = new NodeSDK({
 // Start the OTEL SDK
 otelSDK.start();
 
-// 1.5 Start host metrics collection
+// Start host metrics collection
 const hostMetrics = new HostMetrics({
   meterProvider: metrics.getMeterProvider(),
   name: `${serviceName}-host-metrics`,
 });
 hostMetrics.start();
 
-// 2. Graceful Shutdown (Critical for Railway restarts)
+// Graceful Shutdown
 process.on('SIGTERM', () => {
   otelSDK.shutdown()
     .then(() => console.log('[OTEL] SDK shut down successfully'))
