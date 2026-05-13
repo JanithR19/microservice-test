@@ -1,4 +1,4 @@
-import { NodeSDK } from '@opentelemetry/sdk-node';
+
 import { getNodeAutoInstrumentations } from '@opentelemetry/auto-instrumentations-node';
 import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-http';
 import { OTLPLogExporter } from '@opentelemetry/exporter-logs-otlp-http';
@@ -11,13 +11,22 @@ import { PinoInstrumentation } from '@opentelemetry/instrumentation-pino';
 import { metrics } from '@opentelemetry/api';
 import { HostMetrics } from '@opentelemetry/host-metrics';
 import * as dotenv from "dotenv";
-import * as Sentry from "@sentry/nestjs";
+
 import { nodeProfilingIntegration } from "@sentry/profiling-node";
 
 dotenv.config();
 
+// Standard OTel Environment Variables
+const serviceName = process.env.APP_NAME || 'microservice-test';
+process.env.OTEL_SERVICE_NAME = serviceName; 
+process.env.OTEL_RESOURCE_ATTRIBUTES = `service.name=${serviceName},service.version=1.0.0`;
+
+import { NodeSDK } from '@opentelemetry/sdk-node';
+import * as Sentry from "@sentry/nestjs";
+
+
 Sentry.init({
-  dsn: process.env.SENTRY_DSN, // Add this to your Railway Variables
+  dsn: process.env.SENTRY_DSN,
   integrations: [
     nodeProfilingIntegration(),
     Sentry.consoleLoggingIntegration({ levels: ["log", "warn", "error"] }),
@@ -28,10 +37,6 @@ Sentry.init({
   profilesSampleRate: 1.0,
 });
 
-// Standard OTel Environment Variables
-const serviceName = process.env.APP_NAME || 'microservice-test';
-process.env.OTEL_SERVICE_NAME = serviceName; 
-process.env.OTEL_RESOURCE_ATTRIBUTES = `service.name=${serviceName},service.version=1.0.0`;
 
 const otlpEndpoint = process.env.OTEL_EXPORTER_OTLP_ENDPOINT || 'http://localhost:4318';
 
