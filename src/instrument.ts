@@ -25,17 +25,17 @@ import { NodeSDK } from '@opentelemetry/sdk-node';
 import * as Sentry from "@sentry/nestjs";
 
 
-Sentry.init({
-  dsn: process.env.SENTRY_DSN,
-  integrations: [
-    nodeProfilingIntegration(),
-    Sentry.consoleLoggingIntegration({ levels: ["log", "warn", "error"] }),
-  ],enableLogs:true,
-  // Performance Monitoring
-  tracesSampleRate: 1.0, // Capture 100% of the transactions
-  // Set sampling rate for profiling - this is relative to tracesSampleRate
-  profilesSampleRate: 1.0,
-});
+// Sentry.init({
+//   dsn: process.env.SENTRY_DSN,
+//   integrations: [
+//     nodeProfilingIntegration(),
+//     Sentry.consoleLoggingIntegration({ levels: ["log", "warn", "error"] }),
+//   ],enableLogs:true,
+//   // Performance Monitoring
+//   tracesSampleRate: 1.0, // Capture 100% of the transactions
+//   // Set sampling rate for profiling - this is relative to tracesSampleRate
+//   profilesSampleRate: 1.0,
+// });
 
 
 const otlpEndpoint = process.env.OTEL_EXPORTER_OTLP_ENDPOINT || 'http://localhost:4318';
