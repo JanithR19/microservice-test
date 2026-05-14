@@ -25,17 +25,7 @@ import { NodeSDK } from '@opentelemetry/sdk-node';
 import * as Sentry from "@sentry/nestjs";
 
 
-// Sentry.init({
-//   dsn: process.env.SENTRY_DSN,
-//   integrations: [
-//     nodeProfilingIntegration(),
-//     Sentry.consoleLoggingIntegration({ levels: ["log", "warn", "error"] }),
-//   ],enableLogs:true,
-//   // Performance Monitoring
-//   tracesSampleRate: 1.0, // Capture 100% of the transactions
-//   // Set sampling rate for profiling - this is relative to tracesSampleRate
-//   profilesSampleRate: 1.0,
-// });
+// Sentry will be initialized after NodeSDK starts
 
 
 const otlpEndpoint = process.env.OTEL_EXPORTER_OTLP_ENDPOINT || 'http://localhost:4318';
@@ -75,6 +65,20 @@ export const otelSDK = new NodeSDK({
 
 // Start the OTEL SDK
 otelSDK.start();
+
+// Initialize Sentry AFTER OpenTelemetry SDK
+// This allows Sentry to attach to the existing OpenTelemetry global provider
+// rather than trying to create its own and blocking Alloy.
+Sentry.init({
+  dsn: process.env.SENTRY_DSN,
+  integrations: [
+    nodeProfilingIntegration(),
+    Sentry.consoleLoggingIntegration({ levels: ["log", "warn", "error"] }),
+  ],
+  enableLogs: true,
+  tracesSampleRate: 1.0, 
+  profilesSampleRate: 1.0,
+});
 
 // Start host metrics collection
 const hostMetrics = new HostMetrics({
