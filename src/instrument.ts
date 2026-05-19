@@ -1,4 +1,3 @@
-
 import { getNodeAutoInstrumentations } from '@opentelemetry/auto-instrumentations-node';
 import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-http';
 import { OTLPLogExporter } from '@opentelemetry/exporter-logs-otlp-http';
@@ -24,29 +23,31 @@ process.env.OTEL_RESOURCE_ATTRIBUTES = `service.name=${serviceName},service.vers
 import { NodeSDK } from '@opentelemetry/sdk-node';
 import * as Sentry from "@sentry/nestjs";
 
-
-// Sentry will be initialized after NodeSDK starts
-
-
 const otlpEndpoint = process.env.OTEL_EXPORTER_OTLP_ENDPOINT || 'http://localhost:4318';
 
-// Initialize OpenTelemetry SDK
+/**
+ * OpenTelemetry Node SDK Initialization
+ * Handles automatic instrumentation collection and distribution of:
+ * - Traces (to Grafana Tempo)
+ * - Metrics (to Grafana Prometheus)
+ * - Logs (to Grafana Loki via Pino)
+ */
 export const otelSDK = new NodeSDK({
   resource: resourceFromAttributes({
     [ATTR_SERVICE_NAME]: serviceName,
     [ATTR_SERVICE_VERSION]: '1.0.0',
   }),
-  // Traces to Alloy/Grafana
+  // 1. Traces Target
   traceExporter: new OTLPTraceExporter({
     url: `${otlpEndpoint}/v1/traces`,
   }),
-  // Metrics to Alloy/Grafana
+  // 2. Metrics Target
   metricReader: new PeriodicExportingMetricReader({
     exporter: new OTLPMetricExporter({
       url: `${otlpEndpoint}/v1/metrics`,
     }),
   }),
-  // Logs to Alloy/Grafana
+  // 3. Logs Target
   logRecordProcessor: new BatchLogRecordProcessor(
     new OTLPLogExporter({
       url: `${otlpEndpoint}/v1/logs`,
@@ -54,6 +55,7 @@ export const otelSDK = new NodeSDK({
   ),
   instrumentations: [
     getNodeAutoInstrumentations(),
+    // Log Correlation: Injects current trace/span ID directly into pino log parameters
     new PinoInstrumentation({
       logHook: (span, record) => {
         record['trace_id'] = span.spanContext().traceId;
@@ -63,12 +65,13 @@ export const otelSDK = new NodeSDK({
   ],
 });
 
-// Start the OTEL SDK
+// Start the OpenTelemetry Collector Client
 otelSDK.start();
 
-// Initialize Sentry AFTER OpenTelemetry SDK
-// This allows Sentry to attach to the existing OpenTelemetry global provider
-// rather than trying to create its own and blocking Alloy.
+/**
+ * Sentry Error Reporting & Performance Profiling Setup
+ * Note: Must be initialized AFTER OpenTelemetry to hook into OTel's trace context.
+ */
 Sentry.init({
   dsn: process.env.SENTRY_DSN,
   integrations: [
@@ -80,14 +83,14 @@ Sentry.init({
   profilesSampleRate: 1.0,
 });
 
-// Start host metrics collection
+// Start collecting NodeJS process host metrics
 const hostMetrics = new HostMetrics({
   meterProvider: metrics.getMeterProvider(),
   name: `${serviceName}-host-metrics`,
 });
 hostMetrics.start();
 
-// Graceful Shutdown
+// Handle graceful container shutdown requests (SIGTERM)
 process.on('SIGTERM', () => {
   otelSDK.shutdown()
     .then(() => console.log('[OTEL] SDK shut down successfully'))

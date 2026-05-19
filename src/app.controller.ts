@@ -5,6 +5,7 @@ import { trace, SpanStatusCode } from '@opentelemetry/api';
 @Controller()
 export class AppController {
   private readonly logger = new Logger(AppController.name);
+
   @Get()
   getHello(): string {
     return 'Hello from NestJS Railway Observability!';
@@ -18,39 +19,54 @@ export class AppController {
     };
   }
 
+  /**
+   * Healthcheck endpoint with simulated debug logs
+   */
   @Get('health/live')
   healthLive() {
     this.logger.debug('This is a massive error that OTel will catch!');
-    Sentry.logger.info('User triggered test log', { action: 'test_log' })
+    Sentry.logger.info('User triggered test log', { action: 'test_log' });
     return { status: 'alive' };
   }
 
+  /**
+   * Latency simulator endpoint (2-second delay)
+   */
   @Get('health/slow')
   async healthSlow() {
     await new Promise(resolve => setTimeout(resolve, 2000));
-    Sentry.logger.warn('User triggered test warn log', { action: 'test_log' })
+    Sentry.logger.warn('User triggered test warn log', { action: 'test_log' });
     this.logger.warn('This is a massive warn that OTel will catch!');
     return { status: 'slow', delay: '2s' };
   }
 
+  /**
+   * Error simulator endpoint that throws an unhandled exception
+   */
   @Get('health/error')
   healthError() {
     this.logger.error('This is a massive error that OTel will catch!');
-    Sentry.logger.error('User triggered test error log', { action: 'test_log' })
+    Sentry.logger.error('User triggered test error log', { action: 'test_log' });
     throw new Error('Test error for observability!');
   }
 
+  /**
+   * Simulated Complex Microservice Endpoint
+   * Models cache lookups, database queries with index issues, and downstream network timeouts
+   * to demonstrate full distributed tracing waterfalls in Grafana Tempo.
+   */
   @Get('api/orders/report')
   async getOrdersReport() {
     const tracer = trace.getTracer('microservice-test-tracer');
 
+    // Create the parent request span
     return await tracer.startActiveSpan('HTTP GET /api/orders/report', async (parentSpan) => {
       try {
         this.logger.log('Executing Orders Report aggregation...');
         parentSpan.setAttribute('http.method', 'GET');
         parentSpan.setAttribute('http.route', '/api/orders/report');
 
-        // 1. Check Redis Cache (Fast Span - Cache Miss)
+        // --- STAGE 1: Check Redis Cache (Fast Span - Cache Miss) ---
         await tracer.startActiveSpan('Redis GET report_cache_key', async (span) => {
           span.setAttribute('db.system', 'redis');
           span.setAttribute('redis.key', 'report_orders_2026_q2');
@@ -62,7 +78,7 @@ export class AppController {
           span.end();
         });
 
-        // 2. Slow SQL Query (Simulating a missing database index on join tables)
+        // --- STAGE 2: Slow SQL Query (Simulates a missing database index on join tables) ---
         await tracer.startActiveSpan('PostgreSQL SELECT order_details', async (span) => {
           span.setAttribute('db.system', 'postgresql');
           span.setAttribute('db.name', 'production_db');
@@ -76,7 +92,7 @@ export class AppController {
           span.end();
         });
 
-        // 3. Downstream Partner API Outage simulation (unstable network / 504 timeout)
+        // --- STAGE 3: Downstream Partner API Outage simulation (unstable network / 504 timeout) ---
         await tracer.startActiveSpan('External HTTP Client: GET partners.api.com/currency/convert', async (span) => {
           span.setAttribute('http.url', 'https://partners.api.com/currency/convert');
           span.setAttribute('http.method', 'GET');
@@ -84,7 +100,7 @@ export class AppController {
           // Downstream latency (taking 600ms)
           await new Promise(resolve => setTimeout(resolve, 600));
 
-          // 25% chance of downstream service throwing a 504 Gateway Timeout!
+          // 25% chance of downstream service throwing a 504 Gateway Timeout
           const isTimeout = Math.random() > 0.75;
 
           if (isTimeout) {
@@ -117,12 +133,17 @@ export class AppController {
         };
 
       } catch (error) {
+        // Record details on the parent trace span
         parentSpan.setStatus({
           code: SpanStatusCode.ERROR,
           message: error.message
         });
         parentSpan.recordException(error);
+        
+        // Log the failure to Loki
         this.logger.error(`Failed to compile orders report: ${error.message}`);
+        
+        // Send the stack trace to Sentry
         Sentry.captureException(error);
 
         return {
@@ -140,4 +161,3 @@ export class AppController {
     });
   }
 }
-
